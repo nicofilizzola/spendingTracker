@@ -60,6 +60,15 @@ export async function getTransactions() {
   );
 }
 
+export async function getTransactionsForMonth(monthStart: string, monthEnd: string) {
+  const db = await getDb();
+  return db.getAllAsync<TransactionRow>(
+    'SELECT id, amount, category, label, date FROM transactions WHERE date >= ? AND date < ? ORDER BY date DESC, id DESC',
+    monthStart,
+    monthEnd
+  );
+}
+
 export async function deleteTransactions(ids: number[]) {
   if (ids.length === 0) {
     return;

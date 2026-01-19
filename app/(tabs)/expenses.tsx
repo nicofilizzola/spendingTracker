@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -12,20 +12,40 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 
-import { deleteTransactions, getTransactions, type TransactionRow, initDb, updateTransaction } from '../db';
+import { deleteTransactions, getTransactionsForMonth, type TransactionRow, initDb, updateTransaction } from '../db';
 import { formatEUR } from '../utils/format';
 
 const categories = ['fun', 'groceries', 'boucherie'];
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const getMonthStartDate = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const formatDate = (value: Date) =>
   `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(
     value.getDate()
   ).padStart(2, '0')}`;
+const formatMonthStart = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+const formatMonthEnd = (date: Date) => {
+  const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
+};
+const formatMonthLabel = (date: Date) =>
+  `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+const getMonthsFromCurrent = (baseDate: Date, count: number) => {
+  const months: Date[] = [];
+  for (let i = 0; i <= count; i += 1) {
+    months.push(new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1));
+  }
+  return months;
+};
 
 export default function ExpensesScreen() {
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedMonth, setSelectedMonth] = useState(getMonthStartDate(new Date()));
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editAmount, setEditAmount] = useState('');
   const [editCategory, setEditCategory] = useState(categories[0]);
@@ -33,24 +53,31 @@ export default function ExpensesScreen() {
   const [editDate, setEditDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  const monthOptions = useMemo(() => getMonthsFromCurrent(new Date(), 12), []);
+
   const reloadTransactions = useCallback(() => {
     setError(null);
+    const monthStart = formatMonthStart(selectedMonth);
+    const monthEnd = formatMonthEnd(selectedMonth);
     return initDb()
-      .then(() => getTransactions())
+      .then(() => getTransactionsForMonth(monthStart, monthEnd))
       .then((results) => {
         setRows(results);
+        setSelectedIds(new Set());
       })
       .catch((err: Error) => {
         setError(err.message || 'Could not load transactions.');
       });
-  }, []);
+  }, [selectedMonth]);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setError(null);
+      const monthStart = formatMonthStart(selectedMonth);
+      const monthEnd = formatMonthEnd(selectedMonth);
       initDb()
-        .then(() => getTransactions())
+        .then(() => getTransactionsForMonth(monthStart, monthEnd))
         .then((results) => {
           if (active) {
             setRows(results);
@@ -64,8 +91,12 @@ export default function ExpensesScreen() {
       return () => {
         active = false;
       };
-    }, [])
+    }, [selectedMonth])
   );
+
+  useEffect(() => {
+    reloadTransactions();
+  }, [reloadTransactions]);
 
   const toggleSelection = (id: number) => {
     setSelectedIds((prev) => {
@@ -169,7 +200,7 @@ export default function ExpensesScreen() {
       <Pressable
         style={[styles.checkbox, selectedIds.has(item.id) && styles.checkboxSelected]}
         onPress={() => toggleSelection(item.id)}>
-        {selectedIds.has(item.id) ? <Text style={styles.checkboxText}>✓</Text> : null}
+        {selectedIds.has(item.id) ? <Text style={styles.checkboxText}>X</Text> : null}
       </Pressable>
       <Text style={[styles.cell, styles.dateCell]}>{item.date}</Text>
       <Text style={[styles.cell, styles.categoryCell]} numberOfLines={1}>
@@ -185,6 +216,13 @@ export default function ExpensesScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Expenses</Text>
+      <View style={styles.monthRow}>
+        <Text style={styles.monthLabel}>Month</Text>
+        <Pressable style={styles.monthSelect} onPress={() => setShowMonthPicker(true)}>
+          <Text style={styles.monthText}>{formatMonthLabel(selectedMonth)}</Text>
+          <Ionicons name="chevron-down" size={18} color="#444444" />
+        </Pressable>
+      </View>
       <View style={styles.actionsRow}>
         <View style={styles.actionButtons}>
           <Pressable
@@ -217,6 +255,29 @@ export default function ExpensesScreen() {
         renderItem={renderItem}
         contentContainerStyle={rows.length === 0 ? styles.emptyContainer : undefined}
       />
+      <Modal
+        transparent
+        visible={showMonthPicker}
+        animationType="fade"
+        onRequestClose={() => setShowMonthPicker(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowMonthPicker(false)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Select Month</Text>
+            {monthOptions.map((month) => (
+              <Pressable
+                key={`${month.getFullYear()}-${month.getMonth()}`}
+                style={styles.monthOption}
+                onPress={() => {
+                  setSelectedMonth(month);
+                  setSelectedIds(new Set());
+                  setShowMonthPicker(false);
+                }}>
+                <Text style={styles.monthOptionText}>{formatMonthLabel(month)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -307,6 +368,30 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  monthRow: {
+    marginBottom: 12,
+  },
+  monthLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#222222',
+    marginBottom: 6,
+  },
+  monthSelect: {
+    borderWidth: 1,
+    borderColor: '#d0d0d0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fafafa',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthText: {
+    fontSize: 16,
+    color: '#111111',
   },
   field: {
     marginBottom: 14,
@@ -464,6 +549,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
+  },
+  monthOption: {
+    paddingVertical: 10,
+  },
+  monthOptionText: {
+    fontSize: 15,
+    color: '#222222',
   },
   modalActions: {
     flexDirection: 'row',
