@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -11,6 +11,7 @@ import {
   upsertBudget,
 } from '../db';
 import { formatEUR } from '../utils/format';
+import DonutChart from '../components/DonutChart';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -161,6 +162,7 @@ export default function BudgetScreen() {
 
   return (
     <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
       <Text style={styles.title}>Budget</Text>
       <View style={styles.monthRow}>
         <Text style={styles.monthLabel}>Month</Text>
@@ -199,15 +201,23 @@ export default function BudgetScreen() {
           </View>
         ))}
       </View>
-      <View style={styles.card}>
-        <Text style={styles.panelTitle}>Total Expenses</Text>
-        {categories.map((category) => (
-          <View key={category} style={styles.row}>
-            <Text style={styles.categoryText}>{category}</Text>
-            <Text style={styles.amountText}>{formatEUR(totals[category])}</Text>
-          </View>
-        ))}
+      <View style={styles.donutSection}>
+        {categories.map((category) => {
+          const spent = totals[category];
+          const expected = budgets[category];
+          const progress = expected > 0 ? Math.min(spent / expected, 1) : 0;
+          return (
+            <View key={category} style={styles.donutCard}>
+              <Text style={styles.donutTitle}>{category}</Text>
+              <DonutChart progress={progress} />
+              <Text style={styles.donutCaption}>
+                Spent {formatEUR(spent)} / Expected {formatEUR(expected)}
+              </Text>
+            </View>
+          );
+        })}
       </View>
+      </ScrollView>
       <Modal
         transparent
         visible={showMonthPicker}
@@ -279,9 +289,12 @@ export default function BudgetScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  scrollContent: {
     padding: 24,
     paddingTop: 48,
-    backgroundColor: '#ffffff',
+    flexGrow: 1,
   },
   title: {
     fontSize: 22,
@@ -343,6 +356,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
     color: '#222222',
+  },
+  donutSection: {
+    gap: 12,
+  },
+  donutCard: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+  },
+  donutTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#222222',
+    marginBottom: 12,
+    textTransform: 'capitalize',
+  },
+  donutCaption: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#444444',
+    textAlign: 'center',
   },
   row: {
     flexDirection: 'row',
