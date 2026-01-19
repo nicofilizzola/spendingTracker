@@ -10,6 +10,7 @@ import {
   initDb,
   upsertBudget,
 } from '../db';
+import { formatEUR } from '../utils/format';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -175,7 +176,7 @@ export default function BudgetScreen() {
           <View key={category} style={styles.row}>
             <Text style={styles.categoryText}>{category}</Text>
             <View style={styles.budgetRowRight}>
-              <Text style={styles.amountText}>{budgets[category].toFixed(2)}</Text>
+              <Text style={styles.amountText}>{formatEUR(budgets[category])}</Text>
               <Pressable
                 style={styles.editButton}
                 onPress={() => openBudgetEditor(category)}>
@@ -203,7 +204,7 @@ export default function BudgetScreen() {
         {categories.map((category) => (
           <View key={category} style={styles.row}>
             <Text style={styles.categoryText}>{category}</Text>
-            <Text style={styles.amountText}>{totals[category].toFixed(2)}</Text>
+            <Text style={styles.amountText}>{formatEUR(totals[category])}</Text>
           </View>
         ))}
       </View>

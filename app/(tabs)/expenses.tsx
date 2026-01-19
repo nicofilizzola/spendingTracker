@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { deleteTransactions, getTransactions, type TransactionRow, initDb, updateTransaction } from '../db';
+import { formatEUR } from '../utils/format';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const formatDate = (value: Date) =>
@@ -177,7 +178,7 @@ export default function ExpensesScreen() {
       <Text style={[styles.cell, styles.labelCell]} numberOfLines={1}>
         {item.label ?? '-'}
       </Text>
-      <Text style={[styles.cell, styles.amountCell]}>{item.amount.toFixed(2)}</Text>
+      <Text style={[styles.cell, styles.amountCell]}>{formatEUR(item.amount)}</Text>
     </View>
   );
 
