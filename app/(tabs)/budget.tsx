@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'reac
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { getMonthlyBudgets, getMonthlyCategoryTotals, initDb, upsertBudget } from '../db';
+import { getMonthlyBudgetsWithFallback, getMonthlyCategoryTotals, initDb, upsertBudget } from '../db';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -64,19 +64,14 @@ export default function BudgetScreen() {
       .then(() =>
         Promise.all([
           getMonthlyCategoryTotals(monthStart, monthEnd),
-          getMonthlyBudgets(monthKey),
+          getMonthlyBudgetsWithFallback(monthKey, categories),
         ])
       )
-      .then(([totalRows, budgetRows]) => {
+      .then(([totalRows, budgetResults]) => {
         if (!active) {
           return;
         }
         const nextTotals: Record<string, number> = {
-          fun: 0,
-          groceries: 0,
-          boucherie: 0,
-        };
-        const nextBudgets: Record<string, number> = {
           fun: 0,
           groceries: 0,
           boucherie: 0,
@@ -86,13 +81,8 @@ export default function BudgetScreen() {
             nextTotals[row.category] = row.total ?? 0;
           }
         });
-        budgetRows.forEach((row) => {
-          if (row.category in nextBudgets) {
-            nextBudgets[row.category] = row.amount ?? 0;
-          }
-        });
         setTotals(nextTotals);
-        setBudgets(nextBudgets);
+        setBudgets(budgetResults);
       })
       .catch((err: Error) => {
         if (active) {

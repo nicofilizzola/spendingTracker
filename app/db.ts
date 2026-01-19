@@ -105,6 +105,22 @@ export async function getMonthlyBudgets(month: string) {
   );
 }
 
+export async function getMonthlyBudgetsWithFallback(month: string, categories: string[]) {
+  const db = await getDb();
+  const results: Record<string, number> = {};
+
+  for (const category of categories) {
+    const row = await db.getFirstAsync<{ amount: number }>(
+      'SELECT amount FROM budgets WHERE category = ? AND month <= ? ORDER BY month DESC LIMIT 1',
+      category,
+      month
+    );
+    results[category] = row?.amount ?? 0;
+  }
+
+  return results;
+}
+
 export async function upsertBudget(month: string, category: string, amount: number) {
   const db = await getDb();
   await db.runAsync(
