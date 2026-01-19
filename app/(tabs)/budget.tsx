@@ -205,11 +205,12 @@ export default function BudgetScreen() {
         {categories.map((category) => {
           const spent = totals[category];
           const expected = budgets[category];
+          const pct = expected > 0 ? (spent / expected) * 100 : 0;
           const progress = expected > 0 ? Math.min(spent / expected, 1) : 0;
           return (
             <View key={category} style={styles.donutCard}>
               <Text style={styles.donutTitle}>{category}</Text>
-              <DonutChart progress={progress} />
+              <DonutChart progress={progress} percent={pct} />
               <Text style={styles.donutCaption}>
                 Spent {formatEUR(spent)} / Expected {formatEUR(expected)}
               </Text>
