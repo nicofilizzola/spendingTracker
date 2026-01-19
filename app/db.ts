@@ -28,6 +28,12 @@ export async function initDb() {
   await db.execAsync(
     'CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, amount REAL NOT NULL, category TEXT NOT NULL, label TEXT NULL, date TEXT NOT NULL)'
   );
+  await db.execAsync(
+    'CREATE TABLE IF NOT EXISTS budgets (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, category TEXT NOT NULL, amount REAL NOT NULL)'
+  );
+  await db.execAsync(
+    'CREATE UNIQUE INDEX IF NOT EXISTS budgets_month_category_idx ON budgets(month, category)'
+  );
   return db;
 }
 
@@ -88,5 +94,23 @@ export async function getMonthlyCategoryTotals(monthStart: string, monthEnd: str
     'SELECT category, SUM(amount) as total FROM transactions WHERE date >= ? AND date < ? GROUP BY category',
     monthStart,
     monthEnd
+  );
+}
+
+export async function getMonthlyBudgets(month: string) {
+  const db = await getDb();
+  return db.getAllAsync<{ category: string; amount: number }>(
+    'SELECT category, amount FROM budgets WHERE month = ?',
+    month
+  );
+}
+
+export async function upsertBudget(month: string, category: string, amount: number) {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO budgets (month, category, amount) VALUES (?, ?, ?) ON CONFLICT(month, category) DO UPDATE SET amount = excluded.amount',
+    month,
+    category,
+    amount
   );
 }

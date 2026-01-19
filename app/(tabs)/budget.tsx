@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { getMonthlyCategoryTotals, initDb } from '../db';
+import { getMonthlyBudgets, getMonthlyCategoryTotals, initDb, upsertBudget } from '../db';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -17,6 +17,9 @@ const formatMonthEnd = (date: Date) => {
   const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
   return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
 };
+
+const formatMonthKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
 const formatMonthLabel = (date: Date) =>
   `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
@@ -32,6 +35,14 @@ const getMonthsFromCurrent = (baseDate: Date, count: number) => {
 export default function BudgetScreen() {
   const [selectedMonth, setSelectedMonth] = useState(getMonthStartDate(new Date()));
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editingAmount, setEditingAmount] = useState('0');
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [budgets, setBudgets] = useState<Record<string, number>>({
+    fun: 0,
+    groceries: 0,
+    boucherie: 0,
+  });
   const [totals, setTotals] = useState<Record<string, number>>({
     fun: 0,
     groceries: 0,
@@ -47,10 +58,16 @@ export default function BudgetScreen() {
 
     const monthStart = formatMonthStart(selectedMonth);
     const monthEnd = formatMonthEnd(selectedMonth);
+    const monthKey = formatMonthKey(selectedMonth);
 
     initDb()
-      .then(() => getMonthlyCategoryTotals(monthStart, monthEnd))
-      .then((rows) => {
+      .then(() =>
+        Promise.all([
+          getMonthlyCategoryTotals(monthStart, monthEnd),
+          getMonthlyBudgets(monthKey),
+        ])
+      )
+      .then(([totalRows, budgetRows]) => {
         if (!active) {
           return;
         }
@@ -59,12 +76,23 @@ export default function BudgetScreen() {
           groceries: 0,
           boucherie: 0,
         };
-        rows.forEach((row) => {
+        const nextBudgets: Record<string, number> = {
+          fun: 0,
+          groceries: 0,
+          boucherie: 0,
+        };
+        totalRows.forEach((row) => {
           if (row.category in nextTotals) {
             nextTotals[row.category] = row.total ?? 0;
           }
         });
+        budgetRows.forEach((row) => {
+          if (row.category in nextBudgets) {
+            nextBudgets[row.category] = row.amount ?? 0;
+          }
+        });
         setTotals(nextTotals);
+        setBudgets(nextBudgets);
       })
       .catch((err: Error) => {
         if (active) {
@@ -79,6 +107,38 @@ export default function BudgetScreen() {
 
   useFocusEffect(loadTotals);
 
+  const openBudgetEditor = (category: string) => {
+    setEditingCategory(category);
+    setEditingAmount(String(budgets[category] ?? 0));
+    setBudgetError(null);
+  };
+
+  const closeBudgetEditor = () => {
+    setEditingCategory(null);
+    setBudgetError(null);
+  };
+
+  const handleBudgetSave = async () => {
+    if (!editingCategory) {
+      return;
+    }
+    const parsedAmount = Number(editingAmount.replace(',', '.'));
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      setBudgetError('Enter a valid amount (0 or more).');
+      return;
+    }
+
+    try {
+      const monthKey = formatMonthKey(selectedMonth);
+      await upsertBudget(monthKey, editingCategory, parsedAmount);
+      await loadTotals();
+      closeBudgetEditor();
+      Alert.alert('Budget updated', 'Budget updated.');
+    } catch {
+      setError('Could not update budget.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Budget</Text>
@@ -91,6 +151,23 @@ export default function BudgetScreen() {
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <View style={styles.card}>
+        <Text style={styles.panelTitle}>Monthly Budget</Text>
+        {categories.map((category) => (
+          <View key={category} style={styles.row}>
+            <Text style={styles.categoryText}>{category}</Text>
+            <View style={styles.budgetRowRight}>
+              <Text style={styles.amountText}>{budgets[category].toFixed(2)}</Text>
+              <Pressable
+                style={styles.editButton}
+                onPress={() => openBudgetEditor(category)}>
+                <Ionicons name="pencil" size={16} color="#222222" />
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.panelTitle}>Total Expenses</Text>
         {categories.map((category) => (
           <View key={category} style={styles.row}>
             <Text style={styles.categoryText}>{category}</Text>
@@ -117,6 +194,48 @@ export default function BudgetScreen() {
                 <Text style={styles.monthOptionText}>{formatMonthLabel(month)}</Text>
               </Pressable>
             ))}
+          </View>
+        </Pressable>
+      </Modal>
+      <Modal transparent visible={editingCategory !== null} animationType="slide">
+        <Pressable style={styles.modalOverlay} onPress={closeBudgetEditor}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>Edit Budget</Text>
+            <Text style={styles.modalSubtitle}>
+              {editingCategory} • {formatMonthLabel(selectedMonth)}
+            </Text>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Amount</Text>
+              <TextInput
+                value={editingAmount}
+                onChangeText={(value) => {
+                  setEditingAmount(value);
+                  if (budgetError) {
+                    setBudgetError(null);
+                  }
+                }}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                style={[styles.modalInput, budgetError && styles.modalInputError]}
+                autoFocus
+              />
+              {budgetError ? <Text style={styles.inputErrorText}>{budgetError}</Text> : null}
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalButton, styles.modalCancelButton]} onPress={closeBudgetEditor}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modalButton,
+                  styles.modalSaveButton,
+                  (!editingAmount || budgetError) && styles.modalSaveButtonDisabled,
+                ]}
+                disabled={!editingAmount || !!budgetError}
+                onPress={handleBudgetSave}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -166,6 +285,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     backgroundColor: '#fafafa',
+    marginBottom: 12,
+  },
+  budgetRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editButton: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: '#e6e6e6',
+  },
+  panelTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#222222',
   },
   row: {
     flexDirection: 'row',
@@ -198,12 +334,43 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
+  },
+  modalSubtitle: {
+    color: '#555555',
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  modalField: {
     marginBottom: 12,
+  },
+  modalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#444444',
+    marginBottom: 4,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#d0d0d0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111111',
+    backgroundColor: '#f7f7f7',
+  },
+  modalInputError: {
+    borderColor: '#b00020',
+  },
+  inputErrorText: {
+    color: '#b00020',
+    marginTop: 6,
+    fontSize: 12,
   },
   monthOption: {
     paddingVertical: 10,
@@ -211,5 +378,34 @@ const styles = StyleSheet.create({
   monthOptionText: {
     fontSize: 15,
     color: '#222222',
+  },
+  modalActions: {
+    gap: 10,
+    marginTop: 4,
+  },
+  modalButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    borderWidth: 1,
+    borderColor: '#c8c8c8',
+    backgroundColor: '#ffffff',
+  },
+  modalSaveButton: {
+    backgroundColor: '#111111',
+  },
+  modalSaveButtonDisabled: {
+    backgroundColor: '#c8c8c8',
+  },
+  modalCancelText: {
+    color: '#222222',
+    fontWeight: '600',
+  },
+  modalSaveText: {
+    color: '#ffffff',
+    fontWeight: '600',
   },
 });
