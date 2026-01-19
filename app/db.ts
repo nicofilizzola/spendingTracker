@@ -121,6 +121,38 @@ export async function getMonthlyBudgetsWithFallback(month: string, categories: s
   return results;
 }
 
+export async function getMonthlyBudgetsWithFallbackStatus(
+  month: string,
+  categories: string[]
+): Promise<{ amounts: Record<string, number>; exact: Record<string, boolean> }> {
+  const db = await getDb();
+  const amounts: Record<string, number> = {};
+  const exact: Record<string, boolean> = {};
+
+  for (const category of categories) {
+    const exactRow = await db.getFirstAsync<{ amount: number }>(
+      'SELECT amount FROM budgets WHERE category = ? AND month = ? LIMIT 1',
+      category,
+      month
+    );
+    exact[category] = !!exactRow;
+
+    if (exactRow) {
+      amounts[category] = exactRow.amount ?? 0;
+      continue;
+    }
+
+    const fallbackRow = await db.getFirstAsync<{ amount: number }>(
+      'SELECT amount FROM budgets WHERE category = ? AND month <= ? ORDER BY month DESC LIMIT 1',
+      category,
+      month
+    );
+    amounts[category] = fallbackRow?.amount ?? 0;
+  }
+
+  return { amounts, exact };
+}
+
 export async function upsertBudget(month: string, category: string, amount: number) {
   const db = await getDb();
   await db.runAsync(
@@ -129,4 +161,9 @@ export async function upsertBudget(month: string, category: string, amount: numb
     category,
     amount
   );
+}
+
+export async function deleteBudgetForMonth(month: string, category: string) {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM budgets WHERE month = ? AND category = ?', month, category);
 }

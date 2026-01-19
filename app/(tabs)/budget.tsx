@@ -3,7 +3,13 @@ import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'reac
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { getMonthlyBudgetsWithFallback, getMonthlyCategoryTotals, initDb, upsertBudget } from '../db';
+import {
+  deleteBudgetForMonth,
+  getMonthlyBudgetsWithFallbackStatus,
+  getMonthlyCategoryTotals,
+  initDb,
+  upsertBudget,
+} from '../db';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -43,6 +49,11 @@ export default function BudgetScreen() {
     groceries: 0,
     boucherie: 0,
   });
+  const [exactBudgets, setExactBudgets] = useState<Record<string, boolean>>({
+    fun: false,
+    groceries: false,
+    boucherie: false,
+  });
   const [totals, setTotals] = useState<Record<string, number>>({
     fun: 0,
     groceries: 0,
@@ -64,7 +75,7 @@ export default function BudgetScreen() {
       .then(() =>
         Promise.all([
           getMonthlyCategoryTotals(monthStart, monthEnd),
-          getMonthlyBudgetsWithFallback(monthKey, categories),
+          getMonthlyBudgetsWithFallbackStatus(monthKey, categories),
         ])
       )
       .then(([totalRows, budgetResults]) => {
@@ -82,7 +93,8 @@ export default function BudgetScreen() {
           }
         });
         setTotals(nextTotals);
-        setBudgets(budgetResults);
+        setBudgets(budgetResults.amounts);
+        setExactBudgets(budgetResults.exact);
       })
       .catch((err: Error) => {
         if (active) {
@@ -129,6 +141,23 @@ export default function BudgetScreen() {
     }
   };
 
+  const handleBudgetReset = async (category: string) => {
+    const monthKey = formatMonthKey(selectedMonth);
+    try {
+      await deleteBudgetForMonth(monthKey, category);
+      await loadTotals();
+      Alert.alert('Budget reset', 'Budget reset for this month.');
+    } catch {
+      setError('Could not reset budget.');
+    }
+  };
+
+  const parsedEditingAmount = Number(editingAmount.replace(',', '.'));
+  const isSaveDisabled =
+    editingAmount.trim() === '' ||
+    !Number.isFinite(parsedEditingAmount) ||
+    parsedEditingAmount < 0;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Budget</Text>
@@ -151,6 +180,19 @@ export default function BudgetScreen() {
                 style={styles.editButton}
                 onPress={() => openBudgetEditor(category)}>
                 <Ionicons name="pencil" size={16} color="#222222" />
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.resetButton,
+                  !exactBudgets[category] && styles.resetButtonDisabled,
+                ]}
+                disabled={!exactBudgets[category]}
+                onPress={() => handleBudgetReset(category)}>
+                <Ionicons
+                  name="refresh"
+                  size={16}
+                  color={exactBudgets[category] ? '#222222' : '#888888'}
+                />
               </Pressable>
             </View>
           </View>
@@ -219,9 +261,9 @@ export default function BudgetScreen() {
                 style={[
                   styles.modalButton,
                   styles.modalSaveButton,
-                  (!editingAmount || budgetError) && styles.modalSaveButtonDisabled,
+                  isSaveDisabled && styles.modalSaveButtonDisabled,
                 ]}
-                disabled={!editingAmount || !!budgetError}
+                disabled={isSaveDisabled}
                 onPress={handleBudgetSave}>
                 <Text style={styles.modalSaveText}>Save</Text>
               </Pressable>
@@ -286,6 +328,14 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 6,
     backgroundColor: '#e6e6e6',
+  },
+  resetButton: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: '#e6e6e6',
+  },
+  resetButtonDisabled: {
+    backgroundColor: '#f0f0f0',
   },
   panelTitle: {
     fontSize: 15,
