@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { deleteTransactions, getTransactionsForMonth, type TransactionRow, initDb, updateTransaction } from '../db';
 import { formatEUR } from '../utils/format';
+import { subscribeTransactionsChanged } from '../utils/transactions-events';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -96,6 +97,12 @@ export default function ExpensesScreen() {
 
   useEffect(() => {
     reloadTransactions();
+  }, [reloadTransactions]);
+
+  useEffect(() => {
+    return subscribeTransactionsChanged(() => {
+      reloadTransactions();
+    });
   }, [reloadTransactions]);
 
   const toggleSelection = (id: number) => {

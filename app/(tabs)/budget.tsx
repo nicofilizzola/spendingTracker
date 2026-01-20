@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import {
   upsertBudget,
 } from '../db';
 import { formatEUR } from '../utils/format';
+import { subscribeTransactionsChanged } from '../utils/transactions-events';
 import DonutChart from '../components/DonutChart';
 
 const categories = ['fun', 'groceries', 'boucherie'];
@@ -110,6 +111,12 @@ export default function BudgetScreen() {
   }, [selectedMonth]);
 
   useFocusEffect(loadTotals);
+
+  useEffect(() => {
+    return subscribeTransactionsChanged(() => {
+      loadTotals();
+    });
+  }, [loadTotals]);
 
   const openBudgetEditor = (category: string) => {
     setEditingCategory(category);

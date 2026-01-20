@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { initDb, insertTransaction } from '../db';
+import { emitTransactionsChanged } from '../utils/transactions-events';
 
 const categories = ['fun', 'groceries', 'boucherie'];
 const formatDate = (value: Date) =>
@@ -10,7 +11,11 @@ const formatDate = (value: Date) =>
     value.getDate()
   ).padStart(2, '0')}`;
 
-export default function FormScreen() {
+type TransactionFormProps = {
+  onSaved?: () => void;
+};
+
+export default function TransactionForm({ onSaved }: TransactionFormProps) {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categories[0]);
   const [label, setLabel] = useState('');
@@ -78,6 +83,8 @@ export default function FormScreen() {
       setLabel('');
       setTransactionDate(new Date());
       setSuccess('Saved.');
+      emitTransactionsChanged();
+      onSaved?.();
     } catch {
       setError('Could not save the transaction.');
     }
@@ -85,8 +92,6 @@ export default function FormScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>New Expense</Text>
-
       <View style={styles.field}>
         <Text style={styles.label}>
           Amount <Text style={styles.required}>*</Text>
@@ -167,15 +172,7 @@ export default function FormScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 24,
-    paddingTop: 48,
-    backgroundColor: '#ffffff',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 24,
+    paddingVertical: 8,
   },
   field: {
     marginBottom: 18,
